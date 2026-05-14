@@ -383,10 +383,14 @@ impl<'tcx> TranslateCtx<'tcx> {
         trait_id: TraitDeclId,
         item_def_id: &hax::DefId,
     ) -> Result<AssocItemId, Error> {
-        if let Some(&item_id) = self.assoc_item_id_map.get(item_def_id) {
-            return Ok(item_id);
-        }
-
+        // We must register assoc items for *this* `trait_id` before returning,
+        // even on cache hits: the same trait def can be seen under multiple
+        // `TraitDeclId`s (e.g. polymorphic vs monomorphic instances), and the
+        // per-trait_id maps (`assoc_item_names`, `method_status`) must be
+        // populated for whichever id we hand back ids under. The
+        // `assoc_item_id_map` cache is keyed by assoc-item DefId only, so
+        // returning early off it would skip registration for new `trait_id`s.
+        // `register_assoc_items` itself is idempotent per `trait_id`.
         let item_def = self.poly_hax_def(item_def_id)?;
         let assoc = match item_def.kind() {
             hax::FullDefKind::AssocTy {
@@ -401,6 +405,12 @@ impl<'tcx> TranslateCtx<'tcx> {
             _ => panic!("Unexpected def for associated item: {item_def:?}"),
         };
         let decl_def_id = assoc.implemented_trait_item_id();
+        let trait_def_id = decl_def_id.parent(&self.hax_state).unwrap();
+        self.register_assoc_items(&trait_def_id, trait_id)?;
+
+        if let Some(&item_id) = self.assoc_item_id_map.get(item_def_id) {
+            return Ok(item_id);
+        }
 
         if decl_def_id != item_def_id
             && let Some(&item_id) = self.assoc_item_id_map.get(decl_def_id)
@@ -409,8 +419,6 @@ impl<'tcx> TranslateCtx<'tcx> {
             return Ok(item_id);
         }
 
-        let trait_def_id = decl_def_id.parent(&self.hax_state).unwrap();
-        self.register_assoc_items(&trait_def_id, trait_id)?;
         let item_id = *self.assoc_item_id_map.get(decl_def_id).unwrap();
         Ok(item_id)
     }

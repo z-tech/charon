@@ -383,14 +383,6 @@ impl<'tcx> TranslateCtx<'tcx> {
         trait_id: TraitDeclId,
         item_def_id: &hax::DefId,
     ) -> Result<AssocItemId, Error> {
-        // We must register assoc items for *this* `trait_id` before returning,
-        // even on cache hits: the same trait def can be seen under multiple
-        // `TraitDeclId`s (e.g. polymorphic vs monomorphic instances), and the
-        // per-trait_id maps (`assoc_item_names`, `method_status`) must be
-        // populated for whichever id we hand back ids under. The
-        // `assoc_item_id_map` cache is keyed by assoc-item DefId only, so
-        // returning early off it would skip registration for new `trait_id`s.
-        // `register_assoc_items` itself is idempotent per `trait_id`.
         let item_def = self.poly_hax_def(item_def_id)?;
         let assoc = match item_def.kind() {
             hax::FullDefKind::AssocTy {
